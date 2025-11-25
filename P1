@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>文旅城小区车位信息出租平台</title>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 20px;
+        background: #f8f8f8;
+    }
+    h1 { text-align: center; }
+    .form-box, .admin-box {
+        background: #fff; padding: 15px; border-radius: 8px;
+        border: 1px solid #ddd; margin-bottom: 20px;
+    }
+    label { display: block; margin: 10px 0 5px; }
+    input, select, textarea {
+        width: 100%; padding: 8px; margin-bottom: 10px;
+        border: 1px solid #ccc; border-radius: 5px;
+    }
+    button {
+        padding: 10px 15px; background: #007bff; border: none;
+        border-radius: 5px; color: #fff; cursor: pointer;
+    }
+    button:hover { background: #0056c7; }
+    .item {
+        background: #fff; padding: 12px; border-radius: 5px;
+        border: 1px solid #ddd; margin-bottom: 10px;
+    }
+    img.info-img {
+        max-width:150px; margin-top:8px; cursor: pointer;
+        border-radius: 4px;
+    }
+    .ad-area {
+        margin-top: 20px; padding: 20px; background: #eee;
+        text-align: center; border-radius: 8px;
+    }
+    #adminPanel { display: none; }
+    #adImage { max-width: 100%; }
+    .delete-btn {
+        background: red; margin-top: 10px;
+        display: inline-block;
+    }
+</style>
+</head>
+
+<body>
+
+<h1>文旅城小区车位信息出租平台</h1>
+
+<!-- 发布表单 -->
+<div class="form-box">
+    <label>信息类型</label>
+    <select id="type">
+        <option value="出租">出租</option>
+        <option value="求租">求租</option>
+    </select>
+
+    <label>车位位置（小区/楼号/楼层/车位号）</label>
+    <input type="text" id="location" placeholder="如：文旅城A区-3号楼-1层-58号">
+
+    <label>联系方式（微信/电话）</label>
+    <input type="text" id="contact" placeholder="微信号或手机号">
+
+    <label>管理密码（删除信息时使用，可随意设置）</label>
+    <input type="password" id="userPwd" placeholder="建议设置一个简单密码">
+
+    <label>上传图片（选填）</label>
+    <input type="file" id="image" accept="image/*">
+
+    <label>备注信息</label>
+    <textarea id="remark"></textarea>
+
+    <button onclick="submitInfo()">提交</button>
+</div>
+
+<h2>已发布信息</h2>
+<div id="infoList"></div>
+
+<!-- 广告位 -->
+<div class="ad-area">
+    <img id="adImage" src="" alt="广告位">
+</div>
+
+<!-- 管理员入口 -->
+<div style="text-align:center; margin-top:20px;">
+    <button onclick="showAdminLogin()">管理员登录</button>
+</div>
+
+<!-- 管理员面板 -->
+<div id="adminPanel" class="admin-box">
+    <h3>管理员后台</h3>
+
+    <h4>上传广告图片</h4>
+    <input type="file" id="adminAdUpload" accept="image/*">
+    <button onclick="uploadAd()">更新广告</button>
+
+    <h4>管理全部发布信息</h4>
+    <div id="adminInfoList"></div>
+
+    <button onclick="hideAdminPanel()" style="margin-top:20px;">退出管理员模式</button>
+</div>
+
+
+<script>
+    const ADMIN_PWD = "admin123"; // ←←你可以改成自己的密码
+
+    // -------------------- 工具函数 ------------------------
+    function readImageBase64(file, callback) {
+        const reader = new FileReader();
+        reader.onload = e => callback(e.target.result);
+        reader.readAsDataURL(file);
+    }
+
+    function loadAd() {
+        const ad = localStorage.getItem("adImage");
+        if (ad) document.getElementById("adImage").src = ad;
+    }
+
+    // -------------------- 加载数据 ------------------------
+    function loadData() {
+        const list = JSON.parse(localStorage.getItem("parkingInfos") || "[]");
+        const infoList = document.getElementById("infoList");
+        infoList.innerHTML = "";
+
+        list.forEach(item => {
+            const div = document.createElement("div");
+            div.className = "item";
+            div.innerHTML = `
+                <strong>类型：</strong>${item.type}<br>
+                <strong>位置：</strong>${item.location}<br>
+                <strong>联系方式：</strong>${item.contact}<br>
+                <strong>备注：</strong>${item.remark || "无"}<br>
+                ${item.img ? `<img class="info-img" src="${item.img}" onclick="window.open(this.src)">` : ""}
+                <br><small>发布时间：${item.time}</small><br>
+                <button class="delete-btn" onclick="deleteByUser('${item.id}')">删除</button>
+            `;
+            infoList.appendChild(div);
+        });
+    }
+
+    // -------------------- 用户删除信息 ------------------------
+    function deleteByUser(id) {
+        const userPwd = prompt("请输入发布时设置的管理密码：");
+        if (!userPwd) return;
+
+        let list = JSON.parse(localStorage.getItem("parkingInfos") || "[]");
+        const item = list.find(x => x.id === id);
+
+        if (!item) return alert("信息不存在");
+
+        if (item.pwd !== userPwd) return alert("密码错误，无法删除！");
+
+        list = list.filter(x => x.id !== id);
+        localStorage.setItem("parkingInfos", JSON.stringify(list));
+        loadData();
+        loadAdminInfo();
+    }
+
+    // -------------------- 提交信息 ------------------------
+    function submitInfo() {
+        const type = document.getElementById("type").value;
+        const location = document.getElementById("location").value.trim();
+        const contact = document.getElementById("contact").value.trim();
+        const remark = document.getElementById("remark").value.trim();
+        const pwd = document.getElementById("userPwd").value.trim();
+        const imgFile = document.getElementById("image").files[0];
+
+        if (!location || !contact) return alert("位置和联系方式为必填！");
+        if (!pwd) return alert("请设置一个管理密码，以便删除信息");
+
+        const saveData = base64 => {
+            const list = JSON.parse(localStorage.getItem("parkingInfos") || "[]");
+            list.unshift({
+                id: "id" + Date.now(),
+                type, location, contact, remark,
+                pwd,
+                img: base64 || "",
+                time: new Date().toLocaleString()
+            });
+            localStorage.setItem("parkingInfos", JSON.stringify(list));
+
+            document.getElementById("location").value="";
+            document.getElementById("contact").value="";
+            document.getElementById("remark").value="";
+            document.getElementById("userPwd").value="";
+            document.getElementById("image").value="";
+
+            loadData();
+            loadAdminInfo();
+        };
+
+        if (imgFile) {
+            readImageBase64(imgFile, saveData);
+        } else {
+            saveData("");
+        }
+    }
+
+    // -------------------- 管理员功能 ------------------------
+    function showAdminLogin() {
+        const pwd = prompt("请输入管理员密码：");
+        if (pwd === ADMIN_PWD) {
+            document.getElementById("adminPanel").style.display = "block";
+            loadAdminInfo();
+        } else {
+            alert("密码错误");
+        }
+    }
+
+    function hideAdminPanel() {
+        document.getElementById("adminPanel").style.display = "none";
+    }
+
+    // 管理员管理所有信息
+    function loadAdminInfo() {
+        const list = JSON.parse(localStorage.getItem("parkingInfos") || "[]");
+        const box = document.getElementById("adminInfoList");
+        box.innerHTML = "";
+
+        list.forEach(item => {
+            const div = document.createElement("div");
+            div.className = "item";
+            div.innerHTML = `
+                <strong>${item.type}</strong> | ${item.location}<br>
+                联系方式：${item.contact}<br>
+                ${item.img ? `<img class="info-img" src="${item.img}" onclick="window.open(this.src)">` : ""}
+                <br>
+                <button class="delete-btn" onclick="adminDelete('${item.id}')">管理员删除</button>
+            `;
+            box.appendChild(div);
+        });
+    }
+
+    function adminDelete(id) {
+        let list = JSON.parse(localStorage.getItem("parkingInfos") || "[]");
+        list = list.filter(x => x.id !== id);
+        localStorage.setItem("parkingInfos", JSON.stringify(list));
+        loadData();
+        loadAdminInfo();
+    }
+
+    // 管理员上传广告
+    function uploadAd() {
+        const file = document.getElementById("adminAdUpload").files[0];
+        if (!file) return alert("请先选择图片");
+
+        readImageBase64(file, base64 => {
+            localStorage.setItem("adImage", base64);
+            loadAd();
+            alert("广告更新成功");
+        });
+    }
+
+    // 初始加载
+    loadData();
+    loadAd();
+</script>
+
+</body>
+</html>
